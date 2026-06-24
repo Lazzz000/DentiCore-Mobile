@@ -1,0 +1,251 @@
+openapi: 3.0.3
+info:
+  title: DentiCore 2.0 API REST
+  description: Contrato de servicios para el proyecto DENTICORE-DAWII-CIBERTEC. Arquitectura basada en Spring Boot y PostgreSQL.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Entorno de Desarrollo Local (Docker)
+
+paths:
+  # ==========================================
+  # MÓDULO DE AUTENTICACIÓN Y SEGURIDAD
+  # ==========================================
+  /auth/login:
+    post:
+      summary: Autenticación de Usuario (Generación JWT)
+      tags:
+        - Seguridad
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Autenticación exitosa. Retorna JWT.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Credenciales inválidas.
+
+  # ==========================================
+  # MÓDULO DE CATÁLOGO (Público)
+  # ==========================================
+  /catalogo/especialidades:
+    get:
+      summary: Listar Especialidades Activas
+      tags:
+        - Catálogo
+      responses:
+        '200':
+          description: Lista de especialidades.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Especialidad'
+
+  # ==========================================
+  # MÓDULO DE CITAS Y AGENDAMIENTO (Protegido)
+  # ==========================================
+  /citas:
+    post:
+      summary: Agendar nueva Cita
+      description: Bloquea el cupo concurrentemente e inserta la cita. Emite evento a RabbitMQ.
+      tags:
+        - CRM y Agenda
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgendarCitaRequest'
+      responses:
+        '201':
+          description: Cita creada exitosamente.
+        '409':
+          description: Conflicto - Horario no disponible (Bloqueo Concurrente).
+
+  # ==========================================
+  # MÓDULO CLÍNICO TRANSACCIONAL
+  # ==========================================
+  /clinica/odontograma:
+    post:
+      summary: Registrar Odontograma y Detalles
+      description: Transacción ACID que registra cabecera y detalles en la BD.
+      tags:
+        - Clínica
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuardarOdontogramaRequest'
+      responses:
+        '201':
+          description: Transacción exitosa. Retorna ID generado.
+        '400':
+          description: Error de validación en los datos clínicos.
+
+  # ==========================================
+  # MÓDULO DE VENTAS (Motor de Cobros)
+  # ==========================================
+  /ventas/procesar:
+    post:
+      summary: Procesar Transacción Comercial (Presupuesto/Cierre)
+      description: Genera la cabecera y el detalle de la venta (carrito de servicios) y actualiza el estado de la cita a 'Atendida'.
+      tags:
+        - Ventas y Facturación
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcesarVentaRequest'
+      responses:
+        '200':
+          description: Transacción comercial procesada exitosamente (ACID Commit).
+        '400':
+          description: Error en el cálculo o ítems inválidos en el carrito.
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - dni
+        - password
+      properties:
+        dni:
+          type: string
+          example: "71234567"
+        password:
+          type: string
+          format: password
+          example: "Admin123!"
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR..."
+        rol:
+          type: string
+          example: "Odontologo"
+
+    Especialidad:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        nombre:
+          type: string
+          example: "Ortodoncia"
+
+    AgendarCitaRequest:
+      type: object
+      required:
+        - idPaciente
+        - idOdontologo
+        - fechaHora
+      properties:
+        idPaciente:
+          type: integer
+          example: 15
+        idOdontologo:
+          type: integer
+          example: 2
+        fechaHora:
+          type: string
+          format: date-time
+          example: "2026-06-25T15:30:00Z"
+
+    GuardarOdontogramaRequest:
+      type: object
+      required:
+        - idAtencionClinica
+        - tipo
+        - detalles
+      properties:
+        idAtencionClinica:
+          type: integer
+          example: 104
+        tipo:
+          type: string
+          example: "Inicial"
+        detalles:
+          type: array
+          items:
+            $ref: '#/components/schemas/DetalleOdontograma'
+
+    DetalleOdontograma:
+      type: object
+      required:
+        - idElementoClinico
+        - numeroPieza
+        - diagnostico
+      properties:
+        idElementoClinico:
+          type: integer
+          example: 5
+        numeroPieza:
+          type: integer
+          example: 14
+        diagnostico:
+          type: string
+          example: "Caries oclusal profunda"
+
+    ProcesarVentaRequest:
+      type: object
+      required:
+        - idPaciente
+        - idCita
+        - itemsCarrito
+      properties:
+        idPaciente:
+          type: integer
+          example: 15
+        idCita:
+          type: integer
+          example: 104
+        itemsCarrito:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemCarrito'
+
+    ItemCarrito:
+      type: object
+      required:
+        - idItemCatalogo
+        - cantidad
+        - precioAplicado
+      properties:
+        idItemCatalogo:
+          type: integer
+          example: 8
+        cantidad:
+          type: integer
+          example: 1
+        precioAplicado:
+          type: number
+          format: float
+          example: 150.00
