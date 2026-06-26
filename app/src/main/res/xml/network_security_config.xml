@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Configuración de seguridad de red para el entorno de desarrollo y pruebas E2E.
+
+    Permite tráfico HTTP (cleartext) hacia direcciones específicas:
+    - 10.0.2.2: IP especial del host desde el emulador de Android Studio.
+    - localhost: Para pruebas locales con reverse proxy.
+    - 192.168.101.3: IP local detectada de la máquina de desarrollo.
+
+    IMPORTANTE: Esta configuración debe restringirse o eliminarse en builds de producción.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">192.168.101.3</domain>
+    </domain-config>
+</network-security-config>
